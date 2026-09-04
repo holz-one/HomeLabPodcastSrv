@@ -2,6 +2,8 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #     "flask",
+#     "flask_login",
+#     "werkzeug",
 #     "duckdb",
 #     "feedparser",
 #     "python-dotenv",
@@ -14,6 +16,8 @@
 
 import io
 import json
+import uuid
+import time
 import mimetypes
 import os
 from urllib.parse import quote, unquote
@@ -31,8 +35,19 @@ from flask import (
     send_file,
     send_from_directory,
 )
+
 import requests
 
+from flask_login import (
+    LoginManager, 
+    UserMixin, 
+    login_user, 
+    logout_user, 
+    login_required, 
+    current_user,
+)
+
+from werkzeug.security import generate_password_hash, check_password_hash
 
 from dotenv import load_dotenv
 
@@ -48,45 +63,20 @@ FILES_DB = os.getenv("DB", os.getenv("PLAYLIST_DB", "database/PodcastSrv.duckdb"
 app = Flask(__name__)
 app.config["SERVER_ADMIN"] = EMAIL
 
+
+app.secret_key = "super-secret-key-change-this-in-production"
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
 FILE_DIR = os.getenv("FILE_DIR", "media/")
 
 FEEDS = {}
 
-
-
-# def get_playlists_feeds():
-#     """Reads distinct playlists from DuckDB FilesCast table and generates feed routes."""
-#     playlist_files = []
-#     feeds_dict = {}
-
-#     if os.path.exists(FILES_DB):
-#         try:
-#             con = duckdb.connect(FILES_DB)
-#             playlists = con.execute(
-#                 "SELECT DISTINCT playlist FROM FilesCast WHERE playlist IS NOT"
-#                 " NULL ORDER BY playlist ASC"
-#             ).fetchall()
-
-#             feed_list = []
-#             for (p,) in playlists:
-#                 if not p:
-#                     continue
-
-#                 filename = f"{p}.xml"
-#                 feed_url = f"/media/playlists/local/{filename}"
-#                 feeds_dict[filename] = feed_url
-#                 feed_list.append(filename)
-
-#             if feed_list:
-#                 playlist_files.append({
-#                     "tag": "playlist",
-#                     "label": "Local Playlists",
-#                     "imdb": False,
-#                     "feed": feed_list,
-#                 })
-#             con.close()
-#         except Exception as e:
-#             app.logger.error(f"Error querying DuckDB: {e}")
+# Helper function assuming you have a shared DB connection function
+def get_db():
+    return duckdb.connect(FILES_DB)
 
 #     return playlist_files, feeds_dict
 def get_playlists_feeds():
@@ -98,7 +88,7 @@ def get_playlists_feeds():
         return playlist_files, feeds_dict
 
     try:
-        con = duckdb.connect(FILES_DB)
+        con = get_db() # duckdb.connect(FILES_DB)
         # Query distinct playlist paths and their full directory paths
         rows = con.execute(
             """
@@ -160,7 +150,7 @@ def make_playlist_feed(playlist, email="podcast@podcast.srv"):
     if not os.path.exists(FILES_DB):
         return Response("Database file not found", status=404)
 
-    con = duckdb.connect(FILES_DB)
+    con =  get_db() # duckdb.connect(FILES_DB)
     # ORDER BY title ASC instead of created_time
     rows = con.execute(
         """
@@ -332,7 +322,7 @@ def update_episode():
         return jsonify({"status": "error", "message": "Database not found"}), 404
 
     try:
-        con = duckdb.connect(FILES_DB)
+        con =  get_db() # duckdb.connect(FILES_DB)
         # Fixed syntax: removed trailing comma after description = ?
         con.execute(
             """
@@ -368,7 +358,7 @@ def update_playlist():
         return jsonify({"status": "error", "message": "Database not found"}), 404
 
     try:
-        con = duckdb.connect(FILES_DB)
+        con = get_db() # duckdb.connect(FILES_DB)
         con.execute(
             "UPDATE FilesCast SET playlist = ? WHERE playlist = ?",
             [new_name, old_name],
@@ -379,6 +369,173 @@ def update_playlist():
         app.logger.error(f"Error updating playlist: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+# --- User Model ---
+class User(UserMixin):
+    def __init__(self, id, username):
+        self.id = id
+        self.username = username
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db()
+    res = conn.execute("SELECT id, username FROM users WHERE id = ?", [user_id]).fetchone()
+    conn.close()
+    return User(res[0], res[1]) if res else None
+
+# --- Auth Endpoints ---
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({"error": "Username and password required"}), 400
+
+    user_id = str(uuid.uuid4())
+    p_hash = generate_password_hash(password)
+
+    conn = get_db()
+    try:
+        conn.execute("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)", 
+                     [user_id, username, p_hash])
+        conn.close()
+        return jsonify({"status": "user_created"}), 201
+    except Exception:
+        conn.close()
+        return jsonify({"error": "Username already exists"}), 400
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json(silent=True) or {}
+    username = data.get('username')
+    password = data.get('password')
+
+    conn = get_db()
+    res = conn.execute("SELECT id, password_hash FROM users WHERE username = ?", [username]).fetchone()
+    conn.close()
+
+    if res and check_password_hash(res[1], password):
+        user = User(id=res[0], username=username)
+        login_user(user)
+        return jsonify({"status": "logged_in", "username": username})
+    
+    return jsonify({"error": "Invalid username or password"}), 401
+
+@app.route('/api/logout', methods=['POST'])
+@login_required
+def logout():
+    logout_user()
+    return jsonify({"status": "logged_out"})
+
+
+# --- Protected Tracking Endpoints ---
+
+@app.route('/api/media/state', methods=['GET'])
+@login_required
+def get_media_state():
+    file_path = request.args.get('file_path')
+    if not file_path:
+        return jsonify({"error": "file_path is required"}), 400
+
+    conn = get_db()
+    
+    state = conn.execute("""
+        SELECT 
+            COALESCE(p.last_position_seconds, 0.0) AS resume_position,
+            COALESCE(v.views_count, 0) AS views
+        FROM FilesCast f
+        LEFT JOIN media_progress p ON f.file_path = p.file_path AND p.user_id = ?
+        LEFT JOIN media_views v ON f.file_path = v.file_path
+        WHERE f.file_path = ?
+    """, [current_user.id, file_path]).fetchone()
+
+    notes_res = conn.execute("""
+        SELECT note_id, timestamp_seconds, content 
+        FROM media_notes 
+        WHERE user_id = ? AND file_path = ? 
+        ORDER BY timestamp_seconds ASC
+    """, [current_user.id, file_path]).fetchall()
+
+    conn.close()
+
+    return jsonify({
+        "resume_position": state[0] if state else 0.0,
+        "views": state[1] if state else 0,
+        "notes": [{"id": n[0], "timestamp": n[1], "content": n[2]} for n in notes_res]
+    })
+#
+@app.route('/api/media/save-position', methods=['POST'])
+@login_required
+def save_position():
+    data = request.get_json(silent=True) or {}
+    file_path = data.get('file_path')
+    position = data.get('position', 0.0)
+
+    if not file_path:
+        return jsonify({"error": "file_path is required"}), 400
+
+    # Retry loop to handle concurrent write collisions safely
+    for attempt in range(3):
+        try:
+            conn = get_db()
+            conn.execute("""
+                INSERT INTO media_progress (user_id, file_path, last_position_seconds, updated_at)
+                VALUES (?, ?, ?, now())
+                ON CONFLICT(user_id, file_path) DO UPDATE SET
+                    last_position_seconds = EXCLUDED.last_position_seconds,
+                    updated_at = now()
+            """, [current_user.id, file_path, position])
+            conn.close()
+            return jsonify({"status": "success"})
+        except duckdb.TransactionException:
+            if 'conn' in locals():
+                conn.close()
+            time.sleep(0.05) # Wait 50ms before retrying
+
+    return jsonify({"error": "Database busy"}), 500
+#
+
+@app.route('/api/media/view', methods=['POST'])
+@login_required
+def increment_view():
+    data = request.get_json(silent=True) or {}
+    file_path = data.get('file_path')
+
+    if not file_path:
+        return jsonify({"error": "file_path is required"}), 400
+
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO media_views (file_path, views_count)
+        VALUES (?, 1)
+        ON CONFLICT(file_path) DO UPDATE SET
+            views_count = views_count + 1
+    """, [file_path])
+    
+    conn.close()
+    return jsonify({"status": "success"})
+
+@app.route('/api/media/notes', methods=['POST'])
+@login_required
+def add_note():
+    data = request.get_json(silent=True) or {}
+    file_path = data.get('file_path')
+
+    if not file_path or 'content' not in data:
+        return jsonify({"error": "file_path and content are required"}), 400
+
+    note_id = str(uuid.uuid4())
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO media_notes (note_id, user_id, file_path, timestamp_seconds, content)
+        VALUES (?, ?, ?, ?, ?)
+    """, [note_id, current_user.id, file_path, data.get('timestamp', 0.0), data.get('content', '')])
+    
+    conn.close()
+    return jsonify({"status": "created", "note_id": note_id}), 201
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

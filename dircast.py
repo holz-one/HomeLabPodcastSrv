@@ -42,6 +42,13 @@ HTML5_MEDIA_EXTS = {
 def init_db():
     con = duckdb.connect(FILES_DB)
     con.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id VARCHAR PRIMARY KEY,
+            username VARCHAR UNIQUE NOT NULL,
+            password_hash VARCHAR NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS FilesCast (
             playlist VARCHAR,
             title VARCHAR,
@@ -54,7 +61,29 @@ def init_db():
             created_time VARCHAR,
             transcript VARCHAR,
             description VARCHAR
-        )
+        );
+
+        CREATE TABLE IF NOT EXISTS media_views (
+            file_path VARCHAR PRIMARY KEY REFERENCES FilesCast(file_path),
+            views_count INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS media_progress (
+            user_id VARCHAR REFERENCES users(id),
+            file_path VARCHAR REFERENCES FilesCast(file_path),
+            last_position_seconds DOUBLE DEFAULT 0.0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, file_path)
+        );
+
+        CREATE TABLE IF NOT EXISTS media_notes (
+            note_id VARCHAR PRIMARY KEY,
+            user_id VARCHAR REFERENCES users(id),
+            file_path VARCHAR REFERENCES FilesCast(file_path),
+            timestamp_seconds DOUBLE,
+            content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     con.close()
 

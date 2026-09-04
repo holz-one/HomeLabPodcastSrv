@@ -77,6 +77,9 @@ def clean_missing_playlists():
     )
 
     # 3. Remove orphaned playlist records from DuckDB
+    con.execute(f"DELETE FROM media_progress IN ({", ".join(["?"] * len(orphaned_playlists))})", orphaned_playlists)
+    con.execute(f"DELETE FROM media_notes IN ({", ".join(["?"] * len(orphaned_playlists))})", orphaned_playlists)
+    con.execute(f"DELETE FROM media_views IN ({", ".join(["?"] * len(orphaned_playlists))})", orphaned_playlists)
     con.execute(
         f"""
         DELETE FROM FilesCast 

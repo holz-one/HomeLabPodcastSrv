@@ -10,55 +10,121 @@
     </head>
     <body>
 
+        <!-- Auth Header / User Status Bar -->
+        <nav class="navbar navbar-expand navbar-dark bg-dark px-3 mb-3">
+            <span class="navbar-brand mb-0">
+              <img src="/static/logo.light.png" />
+            </span>
+            <div class="ms-auto d-flex align-items-center">
+                <span id="user-display" class="text-light me-3 small"></span>
+                <button id="auth-btn" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#authModal">Login</button>
+            </div>
+        </nav>
 
+        <div class="container-fluid">
             {{ avfiles_html|safe }}
+        </div>
 
-
+        <!-- Media Player Overlay with Stats and Notes -->
         <div id="media-overlay" class="d-none">
             <div class="player-header">
-                <small id="now-playing-title" class="text-truncate">Nothing playing</small>
+                <div class="d-flex align-items-center justify-content-between w-80 me-2">
+                    <small id="now-playing-title" class="text-truncate fw-bold">Nothing playing</small>
+                    <span id="media-views-badge" class="badge bg-secondary ms-2" title="Total Views">
+                        <i class="bi bi-eye"></i> <span id="view-count">0</span>
+                    </span>
+                </div>
                 <div>
                     <button class="btn btn-sm btn-outline-light" onclick="toggleMinimize()">_</button>
                     <button class="btn btn-sm btn-outline-danger" onclick="closePlayer()">X</button>
                 </div>
             </div>
+
+            <!-- Media Element Container -->
             <div id="media-content"></div>
+
+            <!-- Timestamped Notes Component -->
+            <div id="media-notes-section" class="p-2 border-top bg-dark text-light">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="fw-bold">Notes</small>
+                    <button class="btn btn-sm btn-link text-light p-0" type="button" data-bs-toggle="collapse" data-bs-target="#notesCollapse">
+                        Toggle Notes
+                    </button>
+                </div>
+                <div class="collapse show" id="notesCollapse">
+                    <div id="notes-list" class="mb-2 pe-1" style="max-height: 120px; overflow-y: auto;">
+                        <!-- Notes populated dynamically -->
+                    </div>
+                    <div class="input-group input-group-sm">
+                        <input type="text" id="note-input" class="form-control form-control-sm" placeholder="Take a note at current time..." />
+                        <button class="btn btn-sm btn-primary" onclick="submitNote()">Add</button>
+                    </div>
+                </div>
+            </div>
         </div>
-<!-- Episode Edit Modal -->
-<div id="editEpisodeModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center;">
-  <div style="background:#fff; padding:20px; border-radius:8px; max-width:600px; width:90%; max-height:90vh; overflow-y:auto; color:#000;">
-    <h2>Edit Episode Metadata</h2>
-    <input type="hidden" id="edit-file-path" />
-    
-    <label><strong>Title:</strong></label><br>
-    <input type="text" id="edit-title" style="width:100%; margin-bottom:10px;" /><br>
 
+        <!-- Authentication Modal (Login / Register) -->
+        <div class="modal fade" id="authModal" tabindex="-1" aria-labelledby="authModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="authModalLabel">Account Authentication</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="auth-error" class="alert alert-danger d-none"></div>
+                        <div class="mb-3">
+                            <label for="auth-username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="auth-username" required />
+                        </div>
+                        <div class="mb-3">
+                            <label for="auth-password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="auth-password" required />
+                        </div>
+                    </div>
+                    <div class="modal-footer justify-content-between">
+                        <button type="button" class="btn btn-outline-secondary" onclick="handleRegister()">Register</button>
+                        <button type="button" class="btn btn-primary" onclick="handleLogin()">Login</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-    <label><strong>Description:</strong></label><br>
-    <textarea id="edit-description" rows="4" style="width:100%; margin-bottom:10px;"></textarea><br>
+        <!-- Episode Edit Modal -->
+        <div id="editEpisodeModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center;">
+          <div style="background:#fff; padding:20px; border-radius:8px; max-width:600px; width:90%; max-height:90vh; overflow-y:auto; color:#000;">
+            <h2>Edit Episode Metadata</h2>
+            <input type="hidden" id="edit-file-path" />
+            
+            <label><strong>Title:</strong></label><br>
+            <input type="text" id="edit-title" style="width:100%; margin-bottom:10px;" /><br>
 
-    <div style="text-align:right;">
-      <button type="button" onclick="closeEditModal()">Cancel</button>
-      <button type="button" onclick="saveEpisodeData()" style="background:#007bff; color:#fff; border:none; padding:8px 16px; border-radius:4px;">Save Changes</button>
-    </div>
-  </div>
-</div>
+            <label><strong>Description:</strong></label><br>
+            <textarea id="edit-description" rows="4" style="width:100%; margin-bottom:10px;"></textarea><br>
 
-<!-- Playlist Edit Modal -->
-<div id="editPlaylistModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center;">
-  <div style="background:#fff; padding:20px; border-radius:8px; max-width:400px; width:90%; color:#000;">
-    <h2>Edit Playlist Name</h2>
-    <input type="hidden" id="edit-old-playlist-name" />
-    
-    <label><strong>Playlist Name:</strong></label><br>
-    <input type="text" id="edit-new-playlist-name" style="width:100%; margin-bottom:15px;" /><br>
+            <div style="text-align:right;">
+              <button type="button" onclick="closeEditModal()">Cancel</button>
+              <button type="button" onclick="saveEpisodeData()" style="background:#007bff; color:#fff; border:none; padding:8px 16px; border-radius:4px;">Save Changes</button>
+            </div>
+          </div>
+        </div>
 
-    <div style="text-align:right;">
-      <button type="button" onclick="closePlaylistEditModal()">Cancel</button>
-      <button type="button" onclick="savePlaylistData()" style="background:#007bff; color:#fff; border:none; padding:8px 16px; border-radius:4px;">Save</button>
-    </div>
-  </div>
-</div>
+        <!-- Playlist Edit Modal -->
+        <div id="editPlaylistModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; justify-content:center; align-items:center;">
+          <div style="background:#fff; padding:20px; border-radius:8px; max-width:400px; width:90%; color:#000;">
+            <h2>Edit Playlist Name</h2>
+            <input type="hidden" id="edit-old-playlist-name" />
+            
+            <label><strong>Playlist Name:</strong></label><br>
+            <input type="text" id="edit-new-playlist-name" style="width:100%; margin-bottom:15px;" /><br>
+
+            <div style="text-align:right;">
+              <button type="button" onclick="closePlaylistEditModal()">Cancel</button>
+              <button type="button" onclick="savePlaylistData()" style="background:#007bff; color:#fff; border:none; padding:8px 16px; border-radius:4px;">Save</button>
+            </div>
+          </div>
+        </div>
+
         <script src="/static/bootstrap5/js/bootstrap.bundle.min.js"></script>
         <script src="/static/homepodcastsrv.js"></script>
         <script src="/static/homepodcastsrv-edit.js"></script>
