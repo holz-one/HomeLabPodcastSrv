@@ -2,6 +2,7 @@
 .vscode
 __pycache__
 database/*.duckdb
+database/*.json
 logs/*.log
 media/*
 models/*
