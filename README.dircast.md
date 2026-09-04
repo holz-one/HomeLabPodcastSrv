@@ -22,6 +22,11 @@ ollama pull qwen2.5:1.5b
 
 ```
 
+### Install these with apt or brew
+
+- ffmpeg
+- ffprobe
+
 ## run
 
 Depending on your computer this can take a lot of time.

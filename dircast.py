@@ -31,6 +31,7 @@ FILES_DB = os.getenv("DB", "database/PodcastSrv.duckdb")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
 
 os.makedirs(os.path.dirname(FILES_DB), exist_ok=True)
+os.makedirs(DEFAULT_FILE_DIR, exist_ok=True)
 
 HTML5_MEDIA_EXTS = {
     ".mp4", ".m4v", ".mov", # Video
