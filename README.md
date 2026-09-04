@@ -6,8 +6,6 @@ This system is not designed for a multi million dollar podcast, like Joe Rogan o
 It's more aimed at Home Labs and Non-profits that want a low cost local hosting of content like a house of worship such as a Masjid or a hobbiest tech enjoyer. 
 Used PCs that can run this setup are relativly cheap -- x86_64 or aarch64. 
 Since it's opensource, you can change the database or use your podcast hosting for your files.
-I'm going to consider adding postgres support later on to make it more scaleable, but I'm using duckdb for now.
-
 
 ## Features
 
@@ -20,13 +18,14 @@ I'm going to consider adding postgres support later on to make it more scaleable
 ### Prerequisites
 
 - uv
+- wisper (auto installed by dircast)
 - ollama (used by dircast)
 
 ### Installation
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/holz-one/HomeLabPodcastSrv.git
 cd PodcastSrv
 ```
 
@@ -59,7 +58,6 @@ uv run app.py
 This project uses a Python development using uv to handel dependancies.
 I'm using VSCode on a MacBook mid-2012 running Xubuntu 26.04 to develop this system.
 
-The feedme-3.0.js is an updated jQuery plugin I wrote many many years ago for parsing RSS 2.0 and ATOM feeds, but it will no longer be updated after. 
 I have added the ablity to play HTML5 audio and video content provided in the feed without a propiatary codec like jPlayer. 
 DuckDB is my main DB and I'm not limiting it to one, Postgres is an option for later, which can be used through DuckDB.
 
