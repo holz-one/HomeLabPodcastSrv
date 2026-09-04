@@ -1,0 +1,7 @@
+.git
+.vscode
+__pycache__
+database/*.duckdb
+logs/*.log
+media/*
+models/*

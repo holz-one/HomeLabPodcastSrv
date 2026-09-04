@@ -1,0 +1,29 @@
+body { padding-top: 5px; background-color: #f8f9fa; }
+.sidebar { height: 100vh; overflow-y: auto; border-right: 1px solid #dee2e6; padding: 15px; list-style: none;}
+.menu_media { list-style: none; padding: 0; }
+.menu_media li { padding: 10px; border-bottom: 1px solid #ddd; cursor: pointer; }
+.menu_media li:hover { background: #e9ecef; }
+        
+/* Floating Persistent Player */
+#media-overlay {
+    position: fixed; bottom: 10px; right: 20px; width: 400px; min-height: 200px; max-height: 95%;
+    background: #212529; color: white; border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 1050; transition: all 0.3s;
+}
+#media-overlay.minimized { width: 200px; height: 50px; overflow: hidden; }
+.player-header { padding: 10px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; }
+#media-content video, #media-content audio { width: 100%; border-radius: 0 0 8px 8px; }
+/* Fix for invisible text on active tabs */
+.nav-tabs .nav-link.active {
+    color: #212529 !important; /* Dark gray/black text */
+    background-color: #fff !important;
+    border-color: #dee2e6 #dee2e6 #fff;
+}
+
+/* Ensure the icons inside the active tab also turn dark */
+.nav-tabs .nav-link.active i {
+    color: #212529 !important;
+}
+ul { padding: 1px; }
+li { padding: 1px;}
+
