@@ -16,12 +16,14 @@ import mimetypes
 import os
 import subprocess
 import tempfile
+import json
+import duckdb
+import pandas as pd
+
 from datetime import datetime
 from pathlib import Path
-
-import duckdb
 from dotenv import load_dotenv
-import pandas as pd
+from app import get_db
 
 load_dotenv()
 
@@ -29,6 +31,14 @@ load_dotenv()
 DEFAULT_FILE_DIR = os.getenv("FILE_DIR", "media/")
 FILES_DB = os.getenv("DB", "database/PodcastSrv.duckdb")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
+
+#Postgres
+POSTGRES = os.getenv("POSTGRES", "NO")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost:5332")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "podcast_db")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASS = os.getenv("POSTGRES_PASS", "postgres")
+
 
 os.makedirs(os.path.dirname(FILES_DB), exist_ok=True)
 os.makedirs(DEFAULT_FILE_DIR, exist_ok=True)
@@ -40,7 +50,8 @@ HTML5_MEDIA_EXTS = {
 
 # Ensure DuckDB table exists on startup
 def init_db():
-    con = duckdb.connect(FILES_DB)
+
+    con = get_db()
     con.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id VARCHAR PRIMARY KEY,
@@ -213,9 +224,14 @@ def main():
     parser.add_argument("--dir", type=str, default=DEFAULT_FILE_DIR, help="Specific target directory to scan")
     parser.add_argument("--gpu", action="store_true", help="Enable CUDA GPU acceleration for Whisper transcription")
     parser.add_argument("--noai", action="store_true", help="Skip Whisper and Ollama, saving empty strings for transcript and description")
+    parser.add_argument("--clean", action="store_true", help="Clean out missing files and folders")
     args = parser.parse_args()
 
     init_db()
+
+    if args.clean:
+        clean_missing_playlists()
+        exit()
 
     whisper_model = None
     if not args.noai:
@@ -301,6 +317,76 @@ def main():
             gc.collect()
 
     print("\nFinished processing media directory.")
+
+def clean_missing_playlists():
+    # Output JSON file for exported orphan records
+    TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+    EXPORT_JSON_FILE = f"database/orphaned_playlists_{TIMESTAMP}.json"
+
+    if not os.path.exists(FILES_DB):
+        print(f"Database not found at: {FILES_DB}")
+        return
+
+    con = duckdb.connect(FILES_DB)
+
+    # Query distinct playlists along with their directory paths
+    db_playlists = con.execute("""
+        SELECT DISTINCT playlist, dir 
+        FROM FilesCast 
+        WHERE playlist IS NOT NULL
+    """).fetchall()
+
+    if not db_playlists:
+        print("No playlist entries found in database.")
+        con.close()
+        return
+
+    orphaned_playlists = []
+    
+    # Check if the associated directory physically exists on disk
+    for playlist, dir_path in db_playlists:
+        if not dir_path or not Path(dir_path).is_dir():
+            orphaned_playlists.append(playlist)
+
+    if not orphaned_playlists:
+        print("All playlist directories exist on disk. No clean-up needed.")
+        con.close()
+        return
+
+    print(f"Found {len(orphaned_playlists)} playlist(s) with missing directories:")
+    for p in set(orphaned_playlists):
+        print(f" - {p}")
+
+    # 1. Fetch records for orphaned playlists as a DataFrame
+    query = f"""
+        SELECT * FROM FilesCast 
+        WHERE playlist IN ({", ".join(["?"] * len(orphaned_playlists))})
+    """
+    df_orphans = con.execute(query, orphaned_playlists).df()
+    orphan_records = df_orphans.to_dict(orient="records")
+
+    # 2. Export to JSON file
+    with open(EXPORT_JSON_FILE, "w", encoding="utf-8") as f:
+        json.dump(orphan_records, f, indent=4, default=str)
+    print(
+        f"\nSuccessfully exported {len(orphan_records)} record(s) to"
+        f" '{EXPORT_JSON_FILE}'"
+    )
+
+    # 3. Remove orphaned playlist records from DuckDB
+    con.execute(f"DELETE FROM media_progress IN ({", ".join(["?"] * len(orphaned_playlists))})", orphaned_playlists)
+    con.execute(f"DELETE FROM media_notes IN ({", ".join(["?"] * len(orphaned_playlists))})", orphaned_playlists)
+    con.execute(f"DELETE FROM media_views IN ({", ".join(["?"] * len(orphaned_playlists))})", orphaned_playlists)
+    con.execute(
+        f"""
+        DELETE FROM FilesCast 
+        WHERE playlist IN ({", ".join(["?"] * len(orphaned_playlists))})
+    """,
+        orphaned_playlists,
+    )
+
+    print(f"Successfully removed orphaned records from '{FILES_DB}'.")
+    con.close()
 
 if __name__ == "__main__":
     main()

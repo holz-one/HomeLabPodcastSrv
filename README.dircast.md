@@ -42,3 +42,8 @@ it will scan each file in 60 minute chunks to get the transcript to avoid crashi
 * **Fast Scan (Skip AI):** `uv run dircast.py --noai`
 * **Target Specific Folder:** `uv run dircast.py --dir media/my_folder`
 * **Combined Flags:** `uv run dircast.py --dir media/podcasts --gpu`
+* **Clean missing playlists** `uv run dircast.py --clean`
+
+### Clean out orphaned playlists
+
+this will also create a json file of all data that is deleted from the database called **orphaned_playlists_<timestamp>.json**  

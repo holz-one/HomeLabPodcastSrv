@@ -1,3 +1,19 @@
+document.getElementById('searchPodcast').addEventListener('keyup', function() {
+    const term = this.value.toLowerCase();
+    // Select all the sidebar feed links
+    const sidebarLinks = document.querySelectorAll('#playlists li');
+
+    sidebarLinks.forEach(li => {
+        const text = li.innerText.toLowerCase();
+        // Toggle visibility: if it matches, show it; otherwise, hide it
+        if (text.includes(term)) {
+            li.style.display = "";
+        } else {
+            li.style.display = "none";
+        }
+    });
+});
+
 let currentQueue = [];
 let currentIndex = -1;
 let activePlayer = null;
@@ -26,36 +42,11 @@ async function handleLogin() {
         const modalEl = document.getElementById('authModal');
         const modal = bootstrap.Modal.getInstance(modalEl);
         if (modal) modal.hide();
+        // have a toggle to unhide features for editing
         usernameInput.value = '';
         passwordInput.value = '';
     } else {
         errorEl.innerText = data.error || 'Login failed';
-        errorEl.classList.remove('d-none');
-    }
-}
-
-async function handleRegister() {
-    const usernameInput = document.getElementById('auth-username');
-    const passwordInput = document.getElementById('auth-password');
-    const errorEl = document.getElementById('auth-error');
-
-    errorEl.classList.add('d-none');
-
-    const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            username: usernameInput.value,
-            password: passwordInput.value
-        })
-    });
-
-    const data = await res.json();
-    if (res.ok) {
-        // Automatically log in after registration
-        handleLogin();
-    } else {
-        errorEl.innerText = data.error || 'Registration failed';
         errorEl.classList.remove('d-none');
     }
 }
@@ -87,21 +78,21 @@ function updateUserUI(username) {
 
 // --- Playlist & Feed Loading ---
 
-async function loadFeed(path, type="avfiles") {
+async function loadFeed(path) {
     const res = await fetch(`/api/feed/${encodeURIComponent(path)}`);
     const data = await res.json();
     currentQueue = data.items;
 
-    const infoId = type + "_info";
-    const playlistId = type + "_playlist";
-    const tabTarget = type + "cast-tab";    
+    const infoId = "info";
+    const playlistId = "playlist";
+    const tabTarget = "cast-tab";    
 
     const infoElement = document.getElementById(infoId);
     if (infoElement) {
         infoElement.innerHTML = `<h4>${data.title}</h4><p>${data.description}</p>`;
     }
 
-    const rssLink = document.getElementById(type + '_rss-link');
+    const rssLink = document.getElementById('rss-link');
     if (rssLink && data.link) {
         rssLink.href = data.link.replace('http', 'podcast');
     }
@@ -113,7 +104,7 @@ async function loadFeed(path, type="avfiles") {
             const li = document.createElement('li');
             li.className = "list-group-item list-group-item-action";
             li.innerText = item.title;
-            li.onclick = () => playItem(index, type);
+            li.onclick = () => playItem(index);
             list.appendChild(li);
         });
     }
@@ -125,40 +116,35 @@ async function loadFeed(path, type="avfiles") {
     }
 }
 
-async function playItem(index, type='avfiles') {
+async function playItem(index) {
     if (index >= currentQueue.length) return;
     currentIndex = index;
     const item = currentQueue[index];
-    const id = type + "_item_extra";
+    const id = "item_extra";
 
-    const extraContainer = document.getElementById(id);
-    if (extraContainer) {
-        extraContainer.innerHTML = `
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#"><img src="/static/logo.light.png" height="30"></a>
-        </div>
-        <hr />
-        <p><strong>Title:</strong> ${item.title}</p>
-        <p><strong>Published:</strong> ${item.pubDate || ''}</p>
-        <hr />
-        <div>
-            <strong>Description:</strong><br />
-            <p>${item.description || ''}</p>
-            ${item.transcript || ''}
-        </div>
-        `;
+    const pubDate = document.getElementById('pubdate');
+    const description = document.getElementById('description');
+    const transcript = document.getElementById('transcript');
+    const edititem = document.getElementById('edit_item');
 
-        const editBtn = document.createElement('button');
-        editBtn.className = 'btn btn-sm btn-outline-secondary mt-2';
-        editBtn.innerText = '✏️ Edit Episode';
-        editBtn.onclick = () => openEditModal({
+    pubDate.innerText = item.pubDate || '';
+    description.innerText = item.description || '';
+    transcript.innerText = item.transcript || '';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-sm btn-outline-secondary mt-2 needlogin';
+    editBtn.innerText = '✏️ Edit Episode';
+    editBtn.onclick = () => openEditModal({
            file_path: item.file_path || '',
            title: item.title || '',
            description: item.description || ''
-        });
-        extraContainer.appendChild(editBtn);
-    }
+    });
+    //extraContainer.appendChild(editBtn);
+    edititem.replaceChildren(editBtn);
+    
+    const el = document.getElementById('pcast_info');
 
+    
     // Show Media Overlay Player
     const overlay = document.getElementById('media-overlay');
     const content = document.getElementById('media-content');
@@ -178,10 +164,11 @@ async function playItem(index, type='avfiles') {
     activePlayer.player.onended = () => {
         activePlayer.saveProgress(0);
         if (currentIndex < currentQueue.length - 1) {
-            playItem(currentIndex + 1, type);
+            playItem(currentIndex + 1);
         }
     };
-
+    // Toggle between 'visible' and 'hidden'
+    el.style.visibility = el.style.visibility = 'visible';
     // Load file with state, views, and saved notes
     await activePlayer.loadMedia(item.file_path || item.media_url, item.media_url);
 }

@@ -59,7 +59,7 @@ This project uses a Python development using uv to handel dependancies.
 I'm using VSCode on a MacBook mid-2012 running Xubuntu 26.04 to develop this system.
 
 I have added the ablity to play HTML5 audio and video content provided in the feed without a propiatary codec like jPlayer. 
-DuckDB is my main DB and I'm not limiting it to one, Postgres is an option for later, which can be used through DuckDB.
+DuckDB is my main DB.  I have added some options for Postgres, but it's untested.  change the Postgres settings in the .env file. 
 
 
 ## Acknowledgments
@@ -75,3 +75,5 @@ I have been using a combination of different AI tools (Leo AI, Gemini, ChatGPT, 
 ## License
 
 This project is licensed under the GPL-3.0 - see the LICENSE.md file for details.
+
+

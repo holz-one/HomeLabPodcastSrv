@@ -20,11 +20,12 @@ import uuid
 import time
 import mimetypes
 import os
-from urllib.parse import quote, unquote
-from pathlib import Path
-
 import duckdb
 import feedparser
+import requests
+
+from urllib.parse import quote, unquote
+from pathlib import Path
 from flask import (
     Flask,
     Response,
@@ -35,9 +36,6 @@ from flask import (
     send_file,
     send_from_directory,
 )
-
-import requests
-
 from flask_login import (
     LoginManager, 
     UserMixin, 
@@ -46,9 +44,7 @@ from flask_login import (
     login_required, 
     current_user,
 )
-
 from werkzeug.security import generate_password_hash, check_password_hash
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -59,6 +55,18 @@ from salamcast import SalamCastGen
 TITLE = os.getenv("TITLE", "My Podcast Server")
 EMAIL = os.getenv("EMAIL", "webmaster@mysite.com")
 FILES_DB = os.getenv("DB", os.getenv("PLAYLIST_DB", "database/PodcastSrv.duckdb"))
+
+# Postgress
+POSTGRES = os.getenv("POSTGRES", "NO")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5332")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "podcast_db")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASS = os.getenv("POSTGRES_PASS", "postgres")
+# Format host/port if specified together in host var (e.g. "localhost:5332")
+if ":" in POSTGRES_HOST:
+    POSTGRES_HOST, POSTGRES_PORT = POSTGRES_HOST.split(":")
+
 
 app = Flask(__name__)
 app.config["SERVER_ADMIN"] = EMAIL
@@ -76,7 +84,21 @@ FEEDS = {}
 
 # Helper function assuming you have a shared DB connection function
 def get_db():
-    return duckdb.connect(FILES_DB)
+    if POSTGRES == "YES":
+        conn = duckdb.connect()
+
+        # Install and load postgres driver
+        conn.execute("INSTALL postgres; LOAD postgres;")
+
+        # Attach Postgres database
+        conn.execute(f"""
+            ATTACH 'postgresql://{POSTGRES_USER}:{POSTGRES_PASS}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}' 
+            AS pgsql (TYPE POSTGRES);
+            SET search_path = 'pgsql_db.public', 'main';
+        """)
+        return conn
+    else:
+        return duckdb.connect(FILES_DB)
 
 #     return playlist_files, feeds_dict
 def get_playlists_feeds():
@@ -199,7 +221,7 @@ def make_playlist_feed(playlist, email="podcast@podcast.srv"):
         if transcript:
             episode.add_element(
                 'transcript',
-                f"<details><summary><strong>View Transcript</strong></summary><p style='white-space: pre-wrap;'>{transcript}</p></details>"
+                f"{transcript}"
             )
 
         full_media_path = file_path if file_path else ""
@@ -232,16 +254,12 @@ def index():
     # Load initial feeds and playlists
     playlist_files, pl_feeds = get_playlists_feeds()
     FEEDS.update(pl_feeds)
-    avfiles_html = render_template(
-        "feeds.html",
-        tag="avfiles",
-        Files=playlist_files,
-    )
 
     return render_template(
-        "new_player.html",
+        "player.html",
         title=TITLE,
-        avfiles_html=avfiles_html,
+        tag="avfiles",
+        Files=playlist_files,
     )
 
 
@@ -385,27 +403,6 @@ def load_user(user_id):
 
 # --- Auth Endpoints ---
 
-@app.route('/api/register', methods=['POST'])
-def register():
-    data = request.get_json(silent=True) or {}
-    username = data.get('username')
-    password = data.get('password')
-
-    if not username or not password:
-        return jsonify({"error": "Username and password required"}), 400
-
-    user_id = str(uuid.uuid4())
-    p_hash = generate_password_hash(password)
-
-    conn = get_db()
-    try:
-        conn.execute("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)", 
-                     [user_id, username, p_hash])
-        conn.close()
-        return jsonify({"status": "user_created"}), 201
-    except Exception:
-        conn.close()
-        return jsonify({"error": "Username already exists"}), 400
 
 @app.route('/api/login', methods=['POST'])
 def login():
